@@ -2,11 +2,11 @@ package protocol
 
 // RESP type markers
 const (
-	TypeSimpleString byte = '+'
-	TypeError        byte = '-'
-	TypeInteger      byte = ':'
-	TypeBulkString   byte = '$'
-	TypeArray        byte = '*'
+	TypeSimpleString rune = '+'
+	TypeError        rune = '-'
+	TypeInteger      rune = ':'
+	TypeBulkString   rune = '$'
+	TypeArray        rune = '*'
 )
 
 // Line terminator (RESP protocol requirement)
@@ -45,7 +45,7 @@ func NewInteger(val int64) *Integer {
 	return &Integer{val}
 }
 
-func (i *Integer) Integer() int64 {
+func (i *Integer) Value() int64 {
 	return i.value
 }
 
