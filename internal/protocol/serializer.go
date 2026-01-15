@@ -1,8 +1,8 @@
 package protocol
 
 import (
+	"bytes"
 	"fmt"
-	"strings"
 )
 
 type Serializer struct{}
@@ -11,57 +11,71 @@ func NewSerializer() *Serializer {
 	return &Serializer{}
 }
 
-func (s *Serializer) serializeSimpleString(simpleString *SimpleString) string {
-	return fmt.Sprintf("%c%s%s", TypeSimpleString, simpleString.Value(), CRLF)
+func (s *Serializer) serializeSimpleString(simpleString *SimpleString) []byte {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "%c%s%s", TypeSimpleString, simpleString.Value(), CRLF)
+	return buf.Bytes()
 }
 
-func (s *Serializer) serializeInteger(i *Integer) string {
-	return fmt.Sprintf("%c%d%s", TypeInteger, i.Value(), CRLF)
+func (s *Serializer) serializeInteger(i *Integer) []byte {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "%c%d%s", TypeInteger, i.Value(), CRLF)
+	return buf.Bytes()
 }
 
-func (s *Serializer) serializeError(err *Error) string {
-	return fmt.Sprintf("%c%s%s", TypeError, err.Msg(), CRLF)
+func (s *Serializer) serializeError(err *Error) []byte {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "%c%s%s", TypeError, err.Msg(), CRLF)
+	return buf.Bytes()
 }
 
-func (s *Serializer) serializeBulkString(bulkString *BulkString) string {
+func (s *Serializer) serializeBulkString(bulkString *BulkString) []byte {
+	var buf bytes.Buffer
+
 	if bulkString.IsNull() {
-		return fmt.Sprintf("%c-1%s", TypeBulkString, CRLF)
+		fmt.Fprintf(&buf, "%c-1%s", TypeBulkString, CRLF)
+		return buf.Bytes()
 	}
 	data := bulkString.Data()
-	return fmt.Sprintf("%c%d%s%s%s", TypeBulkString, len(data), CRLF, string(data), CRLF)
+	fmt.Fprintf(&buf, "%c%d%s", TypeBulkString, len(data), CRLF)
+	buf.Write(data)
+	buf.WriteString(CRLF)
+	return buf.Bytes()
 }
 
-func (s *Serializer) serializeArray(arr *Array) (string, error) {
+func (s *Serializer) serializeArray(arr *Array) ([]byte, error) {
+	var buf bytes.Buffer
+
 	if arr.IsNull() {
-		return fmt.Sprintf("%c-1%s", TypeArray, CRLF), nil
+		fmt.Fprintf(&buf, "%c-1%s", TypeArray, CRLF)
+		return buf.Bytes(), nil
 	}
 
-	var result strings.Builder
-	fmt.Fprintf(&result, "%c%d%s", TypeArray, len(arr.Elements()), CRLF)
+	fmt.Fprintf(&buf, "%c%d%s", TypeArray, len(arr.Elements()), CRLF)
 	for _, v := range arr.Elements() {
 		serialized, err := s.Serialize(v)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		result.WriteString(serialized)
+		buf.Write(serialized)
 	}
 
-	return result.String(), nil
+	return buf.Bytes(), nil
 }
 
-func (s *Serializer) Serialize(val RESPValue) (string, error) {
+func (s *Serializer) Serialize(val RESPValue) ([]byte, error) {
 	switch v := val.(type) {
-	case *SimpleString:
-		return s.serializeSimpleString(v), nil
-	case *Error:
-		return s.serializeError(v), nil
-	case *Integer:
-		return s.serializeInteger(v), nil
-	case *BulkString:
-		return s.serializeBulkString(v), nil
-	case *Array:
-		return s.serializeArray(v)
+	case SimpleString:
+		return s.serializeSimpleString(&v), nil
+	case Error:
+		return s.serializeError(&v), nil
+	case Integer:
+		return s.serializeInteger(&v), nil
+	case BulkString:
+		return s.serializeBulkString(&v), nil
+	case Array:
+		return s.serializeArray(&v)
 	default:
-		return "", fmt.Errorf("unsupported RESP type: %T", val)
+		return nil, fmt.Errorf("unsupported RESP type: %T", val)
 	}
 }
