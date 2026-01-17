@@ -54,6 +54,7 @@ func NewServer(cfg *Config) (*Server, error) {
 
 func (s *Server) Start(ctx context.Context) error {
 	var err error
+	// TODO: Handle error when another server is running on same port
 	s.listener, err = net.Listen("tcp", s.cfg.Address())
 	if err != nil {
 		return err

@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"io"
+	"log/slog"
 	"net"
 
 	"github.com/ElshadHu/verdis/internal/command"
@@ -38,12 +39,12 @@ func (c *Connection) Serve(router *command.Router) {
 			if err == io.EOF {
 				return
 			}
-			errResp := protocol.RESPValue(protocol.NewError("ERR" + err.Error()))
-			c.respConn.WriteResponse(&errResp)
+			c.respConn.WriteResponse(protocol.NewError("ERR " + err.Error()))
 			continue
 		}
 		result := router.Execute(cmd)
-		if err := c.respConn.WriteResponse(&result); err != nil {
+		if err := c.respConn.WriteResponse(result); err != nil {
+			slog.Error("Unexpected result occured while attempting to write a response")
 			return
 		}
 	}

@@ -1,5 +1,7 @@
 package protocol
 
+import "fmt"
+
 // RESP type markers
 const (
 	TypeSimpleString rune = '+'
@@ -12,7 +14,11 @@ const (
 // Line terminator (RESP protocol requirement)
 const CRLF = "\r\n"
 
-type RESPValue any
+// RESPValue is the interface all RESP types implement
+// [edit: from any to interface] exactly we cannot rely on any in runtime
+type RESPValue interface {
+	Serialize() []byte
+}
 
 type SimpleString struct {
 	value string
@@ -26,6 +32,11 @@ func (s *SimpleString) Value() string {
 	return s.value
 }
 
+func (s *SimpleString) Serialize() []byte {
+	// lil bit less GC pressure
+	return fmt.Appendf(nil, "%c%s%s", TypeSimpleString, s.value, CRLF)
+}
+
 type Error struct {
 	msg string
 }
@@ -33,8 +44,13 @@ type Error struct {
 func NewError(val string) *Error {
 	return &Error{msg: val}
 }
+
 func (e *Error) Msg() string {
 	return e.msg
+}
+
+func (e *Error) Serialize() []byte {
+	return fmt.Appendf(nil, "%c%s%s", TypeError, e.msg, CRLF)
 }
 
 type Integer struct {
@@ -47,6 +63,10 @@ func NewInteger(val int64) *Integer {
 
 func (i *Integer) Value() int64 {
 	return i.value
+}
+
+func (i *Integer) Serialize() []byte {
+	return fmt.Appendf(nil, "%c%d%s", TypeInteger, i.value, CRLF)
 }
 
 type BulkString struct {
@@ -70,6 +90,17 @@ func (b *BulkString) IsNull() bool {
 	return b.isNull
 }
 
+func (b *BulkString) Serialize() []byte {
+	if b.isNull {
+		return fmt.Appendf(nil, "%c-1%s", TypeBulkString, CRLF)
+	}
+	buf := make([]byte, 0, len(b.data)+20)
+	buf = fmt.Appendf(buf, "%c%d%s", TypeBulkString, len(b.data), CRLF)
+	buf = append(buf, b.data...)
+	buf = append(buf, '\r', '\n')
+	return buf
+}
+
 type Array struct {
 	elements []RESPValue
 	isNull   bool
@@ -89,4 +120,15 @@ func (a *Array) Elements() []RESPValue {
 
 func (a *Array) IsNull() bool {
 	return a.isNull
+}
+
+func (a *Array) Serialize() []byte {
+	if a.isNull {
+		return fmt.Appendf(nil, "%c-1%s", TypeArray, CRLF)
+	}
+	buf := fmt.Appendf(nil, "%c%d%s", TypeArray, len(a.elements), CRLF)
+	for _, elem := range a.elements {
+		buf = append(buf, elem.Serialize()...)
+	}
+	return buf
 }
