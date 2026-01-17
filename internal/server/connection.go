@@ -2,8 +2,10 @@ package server
 
 import (
 	"bufio"
+	"io"
 	"net"
 
+	"github.com/ElshadHu/verdis/internal/command"
 	"github.com/ElshadHu/verdis/internal/protocol"
 )
 
@@ -25,6 +27,25 @@ func newConnection(s *Server, conn net.Conn) *Connection {
 	return &Connection{
 		conn:     conn,
 		respConn: protocol.NewRESPConnection(reader, writer),
+	}
+}
+
+// Serve handles the command loop for the connection
+func (c *Connection) Serve(router *command.Router) {
+	for {
+		cmd, err := c.respConn.ReadCommand()
+		if err != nil {
+			if err == io.EOF {
+				return
+			}
+			errResp := protocol.RESPValue(protocol.NewError("ERR" + err.Error()))
+			c.respConn.WriteResponse(&errResp)
+			continue
+		}
+		result := router.Execute(cmd)
+		if err := c.respConn.WriteResponse(&result); err != nil {
+			return
+		}
 	}
 }
 

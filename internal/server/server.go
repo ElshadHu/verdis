@@ -6,11 +6,17 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/ElshadHu/verdis/internal/command"
+	"github.com/ElshadHu/verdis/internal/command/standard"
+	"github.com/ElshadHu/verdis/internal/mvcc"
 )
 
 type Server struct {
 	cfg      *Config
 	listener net.Listener
+	router   *command.Router
+	engine   *mvcc.Engine
 
 	// conns is a hashset of connections protected by sync.Mutex
 	conns map[*Connection]struct{}
@@ -29,8 +35,18 @@ func NewServer(cfg *Config) (*Server, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+
+	engine := mvcc.NewEngine()
+
+	router := command.NewRouter()
+	ctx := &command.Context{Engine: engine}
+	router.SetContext(ctx)
+	standard.RegisterAll(router)
+
 	return &Server{
 		cfg:       cfg,
+		router:    router,
+		engine:    engine,
 		conns:     make(map[*Connection]struct{}),
 		connLimit: make(chan struct{}, cfg.MaxConnections),
 	}, nil
@@ -90,8 +106,7 @@ func (s *Server) Start(ctx context.Context) error {
 				respConn.Close()
 				s.wg.Done()
 			}()
-			// Placeholder: handle RESP commands here
-			// respConn.Serve(...)
+			respConn.Serve(s.router)
 		}()
 	}
 
