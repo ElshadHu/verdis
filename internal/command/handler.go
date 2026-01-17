@@ -3,13 +3,14 @@ package command
 import (
 	"fmt"
 
+	"github.com/ElshadHu/verdis/internal/mvcc"
 	"github.com/ElshadHu/verdis/internal/protocol"
 )
 
 type Result = protocol.RESPValue
 
 type Context struct {
-	// TODO: Engine *mvcc.Engine
+	Engine *mvcc.Engine
 }
 
 type Handler interface {
