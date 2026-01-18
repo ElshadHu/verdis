@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	verr "github.com/ElshadHu/verdis/internal/errors"
 	"github.com/ElshadHu/verdis/internal/protocol"
 )
 
@@ -49,7 +50,7 @@ func (r *Router) Register(spec *CommandSpec) {
 // Execute routes a command to its handlers and returns the response
 func (r *Router) Execute(cmd *protocol.Command) protocol.RESPValue {
 	if cmd == nil {
-		return protocol.NewError("ERR empty command")
+		return protocol.NewError(verr.ErrEmptyCommand().Error())
 	}
 
 	name := strings.ToUpper(cmd.Name())
@@ -60,7 +61,7 @@ func (r *Router) Execute(cmd *protocol.Command) protocol.RESPValue {
 	r.mu.RUnlock()
 
 	if !exists {
-		return protocol.NewError("ERR unknown command '" + cmd.Name() + "'")
+		return protocol.NewError(verr.ErrUnknownCommand(cmd.Name()).Error())
 	}
 	if err := spec.Validate(cmd); err != nil {
 		return protocol.NewError(err.Error())

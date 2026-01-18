@@ -7,6 +7,7 @@ import (
 	"net"
 
 	"github.com/ElshadHu/verdis/internal/command"
+	verr "github.com/ElshadHu/verdis/internal/errors"
 	"github.com/ElshadHu/verdis/internal/protocol"
 )
 
@@ -39,12 +40,20 @@ func (c *Connection) Serve(router *command.Router) {
 			if err == io.EOF {
 				return
 			}
-			c.respConn.WriteResponse(protocol.NewError("ERR " + err.Error()))
+			// Convert to VerdisError for structured logging
+			ve := verr.ErrParseFailed("command", err)
+			if verr.IsTransient(ve) {
+				slog.Warn("transient read error", "error", ve)
+			} else {
+				slog.Debug("command parse error", "error", ve)
+			}
+			c.respConn.WriteResponse(protocol.NewError(ve.Error()))
 			continue
 		}
 		result := router.Execute(cmd)
 		if err := c.respConn.WriteResponse(result); err != nil {
-			slog.Error("Unexpected result occured while attempting to write a response")
+			writeErr := verr.ErrInternalCause("failed to write response", err)
+			slog.Error("write response failed", "error", writeErr)
 			return
 		}
 	}

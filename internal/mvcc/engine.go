@@ -1,11 +1,14 @@
 package mvcc
 
-import "errors"
+import (
+	verr "github.com/ElshadHu/verdis/internal/errors"
+)
 
+// Sentinel errors for backward compatibility - prefer using verr package directly
 var (
-	ErrKeyNotFound     = errors.New("key not found")
-	ErrVersionNotFound = errors.New("version not found")
-	ErrKeyDeleted      = errors.New("key was deleted at this versi")
+	ErrKeyNotFound     = verr.ErrKeyNotFound
+	ErrVersionNotFound = verr.ErrVersionNotFound
+	ErrKeyDeleted      = verr.ErrKeyDeleted
 )
 
 type Engine struct {

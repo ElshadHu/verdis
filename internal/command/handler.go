@@ -1,8 +1,7 @@
 package command
 
 import (
-	"fmt"
-
+	verr "github.com/ElshadHu/verdis/internal/errors"
 	"github.com/ElshadHu/verdis/internal/mvcc"
 	"github.com/ElshadHu/verdis/internal/protocol"
 )
@@ -47,28 +46,17 @@ type CommandSpec struct {
 	Mutates bool
 }
 
-// Validate if command argument meet the requirements
+// Validate checks if command arguments meet the requirements
 func (s *CommandSpec) Validate(cmd *protocol.Command) error {
 	argc := len(cmd.Args())
 
 	if argc < s.MinArgs {
-		return &WrongArityError{Command: s.Name, Got: argc, Min: s.MinArgs}
+		return verr.ErrWrongArity(s.Name, argc, s.MinArgs, s.MaxArgs)
 	}
 
 	if s.MaxArgs >= 0 && argc > s.MaxArgs {
-		return &WrongArityError{Command: s.Name, Got: argc, Max: s.MaxArgs}
+		return verr.ErrWrongArity(s.Name, argc, s.MinArgs, s.MaxArgs)
 	}
 
 	return nil
-}
-
-type WrongArityError struct {
-	Command string
-	Got     int
-	Min     int
-	Max     int
-}
-
-func (e *WrongArityError) Error() string {
-	return fmt.Sprintf("ERR wrong number of arguments for %s command. Got %d, expects min: %d, max: %d", e.Command, e.Got, e.Min, e.Max)
 }

@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/ElshadHu/verdis/internal/command"
+	verr "github.com/ElshadHu/verdis/internal/errors"
 	"github.com/ElshadHu/verdis/internal/protocol"
 )
 
@@ -16,7 +17,7 @@ func GetVersion(ctx *command.Context, cmd *protocol.Command) command.Result {
 
 	version, err := strconv.ParseUint(versionStr, 10, 64)
 	if err != nil {
-		return protocol.NewError("ERR invalid version number: " + versionStr)
+		return protocol.NewError(verr.ErrInvalidVersion(versionStr).Error())
 	}
 
 	value, err := ctx.Engine.GetAtVersion(key, version)
