@@ -65,6 +65,11 @@ func (gvm *GlobalVersionManager) NextVersion() (version uint64, timestamp int64)
 	return version, timestamp
 }
 
+// CurrentVersion returns the latest version number without incrementing
+func (gvm *GlobalVersionManager) CurrentVersion() uint64 {
+	return gvm.currentVersion.Load()
+}
+
 // GetTimestamp return the timestamp for the version
 func (gvm *GlobalVersionManager) GetTimestamp(version uint64) (int64, bool) {
 	if ts, ok := gvm.timestampMap.Load(version); ok {

@@ -1,45 +1,199 @@
 package mvcc
 
-import "sync"
+import "errors"
 
-// Elshad: Yo BOI it is temp shi
-// Dan: Some shi is goin' on here
-// TODO: implement the MVCC storage interface with lock-free version chains
+var (
+	ErrKeyNotFound     = errors.New("key not found")
+	ErrVersionNotFound = errors.New("version not found")
+	ErrKeyDeleted      = errors.New("key was deleted at this versi")
+)
+
 type Engine struct {
-	data map[string][]byte // temporarily a simple map
-	mu   sync.RWMutex
+	index          *Index
+	versionManager *GlobalVersionManager
+	config         *Config
 }
 
+// NewEngine creates a new MVCC engine with DEFAULT config
 func NewEngine() *Engine {
+	return NewEngineWithConfig(DefaultConfig())
+}
+
+// NewEngineWithConfig creates a new MVCC engine with given config
+func NewEngineWithConfig(config *Config) *Engine {
 	return &Engine{
-		data: make(map[string][]byte),
+		index:          NewIndex(),
+		versionManager: NewGlobalVersionManager(),
+		config:         config,
 	}
 }
 
+// Get returns the latest value for a key
 func (e *Engine) Get(key string) ([]byte, bool) {
-	e.mu.RLock()
-	val, ok := e.data[key]
-	e.mu.RUnlock()
-	return val, ok
+	chain := e.index.GetChain(key)
+	if chain == nil {
+		return nil, false
+	}
+	head := chain.Load()
+	if head == nil {
+		return nil, false
+	}
+
+	// if latest version is tombstone key is deleted
+	if head.Deleted {
+		return nil, false
+	}
+
+	return head.Value, true
 }
 
-func (e *Engine) Set(key string, value []byte) {
-	e.mu.Lock()
-	e.data[key] = value
-	e.mu.Unlock()
+// Set stores a value for a key, creating a new version
+func (e *Engine) Set(key string, value []byte) uint64 {
+	version, timestamp := e.versionManager.NextVersion()
+
+	newNode := &VersionNode{
+		Version:   version,
+		Timestamp: timestamp,
+		Value:     value,
+		Deleted:   false,
+		Prev:      nil,
+	}
+
+	chain := e.index.GetOrCreateChain(key)
+
+	// CAS loop to try until prepend successful
+	for {
+		currentHead := chain.Load()
+		newNode.Prev = currentHead
+
+		if chain.CompareAndSwap(currentHead, newNode) {
+			// prepended current version
+			break
+		}
+
+		// another writer won, retry with their version as the Prev
+	}
+
+	return version
 }
 
+// Del marks a key as deleted by adding a tombstone version
 func (e *Engine) Del(key string) bool {
-	e.mu.Lock()
-	_, existed := e.data[key]
-	delete(e.data, key)
-	e.mu.Unlock()
-	return existed
+	chain := e.index.GetChain(key)
+	if chain == nil {
+		return false
+	}
+
+	currentHead := chain.Load()
+	if currentHead == nil {
+		return false // key has no versions
+	}
+
+	// if already deleted, still creates new tombstone
+	version, timestamp := e.versionManager.NextVersion()
+
+	tombstone := &VersionNode{
+		Version:   version,
+		Timestamp: timestamp,
+		Value:     nil,
+		Deleted:   true,
+		Prev:      nil,
+	}
+
+	// CAS loop to prepend tombstone
+	for {
+		currentHead := chain.Load()
+		tombstone.Prev = currentHead
+
+		if chain.CompareAndSwap(currentHead, tombstone) {
+			break
+		}
+	}
+
+	return true
 }
 
+// Exists checks if a key exists and is not deleted
 func (e *Engine) Exists(key string) bool {
-	e.mu.RLock()
-	_, ok := e.data[key]
-	e.mu.RUnlock()
-	return ok
+	chain := e.index.GetChain(key)
+	if chain == nil {
+		return false
+	}
+	head := chain.Load()
+
+	if head == nil {
+		return false
+	}
+	return !head.Deleted
+}
+
+// GetAtVersion returns the value at a specific version or earlier
+func (e *Engine) GetAtVersion(key string, version uint64) ([]byte, error) {
+	chain := e.index.GetChain(key)
+	if chain == nil {
+		return nil, ErrKeyNotFound
+	}
+
+	head := chain.Load()
+	if head == nil {
+		return nil, ErrKeyNotFound
+	}
+
+	// walk chain backwards until we find the version <= requested
+	current := head
+	for current != nil {
+		if current.Version <= version {
+			if current.Deleted {
+				return nil, ErrKeyDeleted
+			}
+			return current.Value, nil
+		}
+		current = current.Prev
+	}
+
+	return nil, ErrVersionNotFound
+}
+
+// History returns version meta a key
+func (e *Engine) History(key string, maxVersions int) ([]VersionInfo, error) {
+	chain := e.index.GetChain(key)
+	if chain == nil {
+		return nil, ErrKeyNotFound
+	}
+
+	head := chain.Load()
+	if head == nil {
+		return nil, ErrKeyNotFound
+	}
+
+	var history []VersionInfo
+	current := head
+
+	for current != nil {
+		history = append(history, current.ToInfo())
+		if maxVersions > 0 && len(history) > maxVersions {
+			break
+		}
+		current = current.Prev
+	}
+	return history, nil
+}
+
+// CurrentVersion returns the global version counter (for snapshots)
+func (e *Engine) CurrentVersion() uint64 {
+	return e.versionManager.CurrentVersion()
+}
+
+// EngineStats holds engine statistics
+type EngineStats struct {
+	KeyCount       int
+	CurrentVersion uint64
+}
+
+// Stats returns engine statistics (for INFO command)
+func (e *Engine) Stats() EngineStats {
+	return EngineStats{
+		KeyCount:       e.index.Count(),
+		CurrentVersion: e.versionManager.CurrentVersion(),
+	}
 }
