@@ -4,7 +4,6 @@ import (
 	verr "github.com/ElshadHu/verdis/internal/errors"
 )
 
-// Sentinel errors for backward compatibility - prefer using verr package directly
 var (
 	ErrKeyNotFound     = verr.ErrKeyNotFound
 	ErrVersionNotFound = verr.ErrVersionNotFound
