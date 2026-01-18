@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/ElshadHu/verdis/internal/command"
@@ -12,6 +14,34 @@ import (
 	"github.com/ElshadHu/verdis/internal/command/version"
 	"github.com/ElshadHu/verdis/internal/mvcc"
 )
+
+type ErrAddressInUse struct {
+	Address string
+	Err     error
+}
+
+func (e *ErrAddressInUse) Error() string {
+	return fmt.Sprintf(
+		"cannot start server: address %s is already in use\n"+
+			"  Possible solutions:\n"+
+			"  - Stop the existing process using this port (lsof -i :%s | grep LISTEN)\n"+
+			"  - Use a different port with WithPort() configuration\n"+
+			"  - Wait for the port to be released (TIME_WAIT state)",
+		e.Address, extractPort(e.Address),
+	)
+}
+
+func (e *ErrAddressInUse) Unwrap() error {
+	return e.Err
+}
+
+func extractPort(addr string) string {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	return port
+}
 
 type Server struct {
 	cfg      *Config
@@ -56,8 +86,7 @@ func NewServer(cfg *Config) (*Server, error) {
 
 func (s *Server) Start(ctx context.Context) error {
 	var err error
-	// TODO: Handle error when another server is running on same port
-	s.listener, err = net.Listen("tcp", s.cfg.Address())
+	s.listener, err = s.listenWithRetry(ctx)
 	if err != nil {
 		return err
 	}
@@ -114,6 +143,60 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (s *Server) listenWithRetry(ctx context.Context) (net.Listener, error) {
+	addr := s.cfg.Address()
+
+	const (
+		maxRetries     = 3
+		initialBackoff = 100 * time.Millisecond
+		maxBackoff     = 2 * time.Second
+	)
+
+	var lastErr error
+	backoff := initialBackoff
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		listener, err := net.Listen("tcp", addr)
+		if err == nil {
+			return listener, nil
+		}
+
+		lastErr = err
+
+		if !isAddressInUseError(err) {
+			return nil, fmt.Errorf("failed to listen on %s: %w", addr, err)
+		}
+
+		if attempt == maxRetries {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+			backoff = min(backoff*2, maxBackoff)
+		}
+	}
+
+	return nil, &ErrAddressInUse{Address: addr, Err: lastErr}
+}
+
+func isAddressInUseError(err error) bool {
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		var syscallErr *syscall.Errno
+		if errors.As(opErr.Err, &syscallErr) {
+			return *syscallErr == syscall.EADDRINUSE
+		}
+		var sysErr syscall.Errno
+		if errors.As(opErr.Err, &sysErr) {
+			return sysErr == syscall.EADDRINUSE
+		}
+	}
+	return false
 }
 
 // Shutdown gracefully stops the server
