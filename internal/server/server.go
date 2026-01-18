@@ -9,6 +9,7 @@ import (
 
 	"github.com/ElshadHu/verdis/internal/command"
 	"github.com/ElshadHu/verdis/internal/command/standard"
+	"github.com/ElshadHu/verdis/internal/command/version"
 	"github.com/ElshadHu/verdis/internal/mvcc"
 )
 
@@ -42,6 +43,7 @@ func NewServer(cfg *Config) (*Server, error) {
 	ctx := &command.Context{Engine: engine}
 	router.SetContext(ctx)
 	standard.RegisterAll(router)
+	version.RegisterAll(router)
 
 	return &Server{
 		cfg:       cfg,
