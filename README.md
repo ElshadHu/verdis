@@ -14,13 +14,30 @@ Verdis treats history as a first class stuff. Every write creates a version. Eve
 
 This is the current plan. It might change as things progress.
 
-1. Foundation: RESP protocol, basic MVCC engine, in memory operations
-2. Version Control Commands: historical reads, rollback, diff, blame
-3. Persistence: write ahead log, LSM tree storage, compaction
-4. Transaction Support: snapshot isolation, atomic commits
-5. Operations and Observability: metrics, logging, admin commands
-6. Performance Optimization: caching, parallel compaction, connection pooling
+### Phase 1: Foundation
+
+| Component | Status |
+|-----------|--------|
+| RESP protocol parser | Done |
+| TCP server with connection handling | Done |
+| MVCC engine core | in WIP (We are working on it :)) |
+| Basic commands (GET, SET, DEL, EXISTS, PING) | Done |
+
+### Phase 2: Version Control Commands
+
+| Component | Status |
+|-----------|--------|
+| Historical reads (GET key@version) | WIP |
+| HISTORY command | WIP |
+| ROLLBACK command | WIP |
+
+We are searching on it and we will see what happens
+
+### Phase 3: Persistence (Planned)
+
+Write ahead log, LSM tree storage engine, compaction. Data survives restarts
+
 
 That is the war that we are creating for ourselves. Let's see how it goes and how we become older quickly :)
 
-- Mushie was here - If you are here gang, you gotta also suffer :)
+Mushie was here. If you are here gang, you gotta also suffer :)
