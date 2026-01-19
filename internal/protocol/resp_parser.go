@@ -62,7 +62,10 @@ func (p *RESPParser) readLine() (string, error) {
 	}
 
 	// Validate CRLF
-	if len(line) < 2 || line[len(line)-2] != '\r' {
+	if len(line) < 2 {
+		return "", fmt.Errorf("invalid protocol: line too short")
+	}
+	if line[len(line)-2] != '\r' {
 		return "", fmt.Errorf("invalid protocol: expected CRLF, got %q", line[len(line)-2:])
 	}
 
@@ -72,6 +75,9 @@ func (p *RESPParser) readLine() (string, error) {
 
 func (p *RESPParser) parseArray() (*Array, error) {
 	line, err := p.readLine()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read array count: %w", err)
+	}
 	count, err := strconv.Atoi(line)
 	if err != nil {
 		return nil, fmt.Errorf("invalid array count: %w", err)
@@ -105,6 +111,9 @@ func (p *RESPParser) parseArray() (*Array, error) {
 
 func (p *RESPParser) parseBulkString() (*BulkString, error) {
 	line, err := p.readLine()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read bulk string length: %w", err)
+	}
 	length, err := strconv.Atoi(line)
 	if err != nil {
 		return nil, fmt.Errorf("invalid bulk string length: %w", err)
