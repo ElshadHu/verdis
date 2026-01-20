@@ -277,7 +277,7 @@ func TestChunkedDelivery(t *testing.T) {
 		}
 		parsed++
 	}
-	if parsed < cmdCount-1 {
+	if parsed != cmdCount {
 		t.Errorf("expected %d commands, got %d", cmdCount, parsed)
 	}
 }
