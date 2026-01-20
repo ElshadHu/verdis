@@ -36,7 +36,7 @@ func FuzzRESPParser(f *testing.F) {
 	})
 }
 
-// FuzzBulStringBoundary targets parseBulkString length handling
+// FuzzBulkStringBoundary targets parseBulkString length handling
 func FuzzBulkStringBoundary(f *testing.F) {
 	f.Add(int64(-2))
 	f.Add(int64(-1))
@@ -101,19 +101,19 @@ func TestSerializeParseRoundTrip(t *testing.T) {
 	}
 
 	// what if generate 1000 random buk strings with binary data , let's see
-
+	rng := rand.New(rand.NewSource(42))
 	for i := 0; i < 1000; i++ {
-		size := rand.Intn(500)
+		size := rng.Intn(500)
 		data := make([]byte, size)
 		crand.Read(data)
 		cases = append(cases, NewBulkString(data))
 	}
 	// Generate 100 random arrays
 	for i := 0; i < 100; i++ {
-		elemCount := rand.Intn(10)
+		elemCount := rng.Intn(10)
 		elems := make([]RESPValue, elemCount)
 		for j := 0; j < elemCount; j++ {
-			elems[j] = NewInteger(rand.Int63())
+			elems[j] = NewInteger(rng.Int63())
 		}
 		cases = append(cases, NewArray(elems))
 	}
@@ -229,16 +229,17 @@ func TestValidInput(t *testing.T) {
 // TestChunkedDelivery: simulates TCP fragmentation
 
 func TestChunkedDelivery(t *testing.T) {
+	rng := rand.New(rand.NewSource(42))
 	// build pipeline of commands
 	var pipeline bytes.Buffer
 	cmdCount := 10000
 	for i := 0; i < cmdCount; i++ {
-		argCount := rand.Intn(5) + 1
+		argCount := rng.Intn(5) + 1
 		pipeline.WriteString(fmt.Sprintf("*%d\r\n", argCount))
 
 		for j := 0; j < argCount; j++ {
 			// random binary arg 0-50 bytes
-			argLen := rand.Intn(50)
+			argLen := rng.Intn(50)
 			arg := make([]byte, argLen)
 			crand.Read(arg)
 			pipeline.WriteString(fmt.Sprintf("$%d\r\n", argLen))
@@ -254,7 +255,7 @@ func TestChunkedDelivery(t *testing.T) {
 		defer pw.Close()
 		pos := 0
 		for pos < len(data) {
-			chunkSize := rand.Intn(5) + 1
+			chunkSize := rng.Intn(5) + 1
 			if pos+chunkSize > len(data) {
 				chunkSize = len(data) - pos
 			}
@@ -272,7 +273,7 @@ func TestChunkedDelivery(t *testing.T) {
 			break
 		}
 		if err != nil {
-			break
+			t.Fatalf("parse error after %d commands: %v", parsed, err)
 		}
 		parsed++
 	}
@@ -300,8 +301,9 @@ func TestBinaryPayload(t *testing.T) {
 		[]byte("\r\n\r\n\r\n"),         // CRLF pattern
 	}
 	// 1000 random binary payloads
+	rng := rand.New(rand.NewSource(42))
 	for i := 0; i < 1000; i++ {
-		size := rand.Intn(200)
+		size := rng.Intn(200)
 		data := make([]byte, size)
 		crand.Read(data)
 		testData = append(testData, data)
