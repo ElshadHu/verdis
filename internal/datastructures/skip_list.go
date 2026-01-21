@@ -2,12 +2,12 @@ package datastructures
 
 import (
 	"bytes"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
 const (
-	// Supports millions
 	maxLevel    = 16
 	probability = 4
 )
@@ -40,6 +40,7 @@ type SkipList struct {
 	level atomic.Int32
 	size  atomic.Int64
 	seed  atomic.Uint64
+	mu    sync.Mutex // Used only for Clear() to ensure atomicity
 }
 
 func NewSkipList() *SkipList {
@@ -65,10 +66,9 @@ func (sl *SkipList) randomLevel() int {
 		next ^= next >> 7
 		next ^= next << 17
 		if sl.seed.CompareAndSwap(old, next) {
-			// Use lower bits to find the level
-			// Each level has 1/4 probability
+			// Use lower bits for level probability
 			r := next
-			for level < maxLevel-1 && (r&3) == 0 {
+			for level < maxLevel-1 && (r&(probability-1)) == 0 {
 				level++
 				r >>= 2
 			}
@@ -218,9 +218,8 @@ func (sl *SkipList) Put(key, value []byte) bool {
 				// Structure changed, refind predecessors
 				preds, succs = sl.findPath(keyCopy)
 
-				// Check if our node was deleted by another thread
+				// early exit
 				if succs[0] == nil || !bytes.Equal(succs[0].key, keyCopy) || succs[0].marked.Load() {
-					// Node was deleted, upper links don't matter
 					sl.size.Add(1)
 					return true
 				}
@@ -386,14 +385,26 @@ func (sl *SkipList) Seek(target []byte) *SkipListIterator {
 		}
 	}
 
+	// After descent, current is the predecessor of the target position.
 	it.current = current
+	next := current.forward[0].Load()
 
-	for it.Next() {
-		if bytes.Compare(it.current.key, target) >= 0 {
+	// Find first non-deleted node >= target
+	for next != nil {
+		if next.marked.Load() {
+			// Skip deleted nodes
+			next = next.forward[0].Load()
+			continue
+		}
+		if bytes.Compare(next.key, target) >= 0 {
+			it.current = next
 			return it
 		}
+		next = next.forward[0].Load()
 	}
 
+	// No valid node found >= target, position at end
+	it.current = nil
 	return it
 }
 
@@ -421,15 +432,19 @@ func (sl *SkipList) Range(start, end []byte, fn func(key, value []byte) bool) {
 
 // Clear removes all entries from the skip list.
 func (sl *SkipList) Clear() {
-	// Mark all existing nodes as deleted first
+	sl.mu.Lock()
+	defer sl.mu.Unlock()
+
 	current := sl.head.forward[0].Load()
 	for current != nil {
 		current.marked.Store(true)
 		current = current.forward[0].Load()
 	}
-	for i := range maxLevel {
+
+	for i := 0; i < maxLevel; i++ {
 		sl.head.forward[i].Store(nil)
 	}
+
 	sl.level.Store(0)
 	sl.size.Store(0)
 }
