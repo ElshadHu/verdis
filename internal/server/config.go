@@ -3,89 +3,183 @@ package server
 import (
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
 	"time"
 )
 
+var (
+	ErrEmptyHost               = errors.New("host must not be empty")
+	ErrInvalidPort             = errors.New("port must be between 0 and 65535")
+	ErrInvalidAddress          = errors.New("invalid address")
+	ErrNegativeReadTimeout     = errors.New("read timeout must be non-negative")
+	ErrNegativeWriteTimeout    = errors.New("write timeout must be non-negative")
+	ErrNegativeIdleTimeout     = errors.New("idle timeout must be non-negative")
+	ErrNegativeMaxConns        = errors.New("max connections must be non-negative")
+	ErrNonPositiveReadBufSize  = errors.New("read buffer size must be positive")
+	ErrNonPositiveWriteBufSize = errors.New("write buffer size must be positive")
+)
+
+// ConfigOption applies a configuration setting to a Config.
+type ConfigOption func(*Config) error
+
+// Config holds the server network and resource settings.
 type Config struct {
-	Host            string
-	Port            int
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	IdleTimeout     time.Duration
-	MaxConnections  int
-	ReadBufferSize  int
+	Host string
+	Port int
+
+	// ReadTimeout is the max duration for reading a full request (where 0 = no timeout).
+	ReadTimeout time.Duration
+
+	// WriteTimeout is the max duration for writing a full response (where 0 = no timeout).
+	WriteTimeout time.Duration
+
+	// IdleTimeout is how long an idle connection is kept alive (where 0 = no timeout).
+	IdleTimeout time.Duration
+
+	// MaxConnections is the max number of concurrent connections (where 0 = unlimited).
+	MaxConnections int
+
+	// ReadBufferSize is the per-connection read buffer in bytes.
+	ReadBufferSize int
+
+	// WriteBufferSize is the per-connection write buffer in bytes.
 	WriteBufferSize int
 }
 
-func NewDefaultConfig() *Config {
-	return &Config{
+// NewDefaultConfig creates a Config with sensible defaults with variadic options.
+func NewDefaultConfig(opts ...ConfigOption) (*Config, error) {
+	conf := &Config{
 		Host:            "0.0.0.0",
 		Port:            6379,
-		ReadTimeout:     0,
-		WriteTimeout:    0,
-		IdleTimeout:     0,
-		MaxConnections:  0,
-		ReadBufferSize:  1024 * 4, // 4 KB
-		WriteBufferSize: 1024 * 4, // 4 KB
+		ReadBufferSize:  4096, // 4 KB
+		WriteBufferSize: 4096, // 4 KB
 	}
+
+	for _, opt := range opts {
+		if err := opt(conf); err != nil {
+			return nil, fmt.Errorf("applying config option: %w", err)
+		}
+	}
+
+	if err := conf.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	return conf, nil
 }
 
+// Address returns the host:port string for net.Listen.
 func (c *Config) Address() string {
-	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+	return net.JoinHostPort(c.Host, strconv.Itoa(c.Port))
 }
 
+// Validate checks all config fields for invalid values.
 func (c *Config) Validate() error {
+	if c.Host == "" {
+		return ErrEmptyHost
+	}
 	if c.Port < 0 || c.Port > 65535 {
-		return errors.New("port must be between 0 and 65535")
+		return ErrInvalidPort
 	}
-	if c.ReadBufferSize < 0 {
-		return errors.New("read buffer size must be non-negative")
+	if c.ReadTimeout < 0 {
+		return ErrNegativeReadTimeout
 	}
-	if c.WriteBufferSize < 0 {
-		return errors.New("write buffer size must be non-negative")
+	if c.WriteTimeout < 0 {
+		return ErrNegativeWriteTimeout
+	}
+	if c.IdleTimeout < 0 {
+		return ErrNegativeIdleTimeout
 	}
 	if c.MaxConnections < 0 {
-		return errors.New("max connection must be non negative")
+		return ErrNegativeMaxConns
+	}
+	if c.ReadBufferSize <= 0 {
+		return ErrNonPositiveReadBufSize
+	}
+	if c.WriteBufferSize <= 0 {
+		return ErrNonPositiveWriteBufSize
 	}
 	return nil
 }
 
-func (c *Config) WithHost(host string) *Config {
-	c.Host = host
-	return c
+// WithHost sets the listen host address.
+func WithHost(host string) ConfigOption {
+	return func(c *Config) error {
+		c.Host = host
+		return nil
+	}
 }
 
-func (c *Config) WithPort(port int) *Config {
-	c.Port = port
-	return c
+// WithPort sets the listen port.
+func WithPort(port int) ConfigOption {
+	return func(c *Config) error {
+		c.Port = port
+		return nil
+	}
 }
 
-func (c *Config) WithReadTimeout(readTimeout time.Duration) *Config {
-	c.ReadTimeout = readTimeout
-	return c
+// WithAddress sets host and port from a "host:port" string.
+func WithAddress(address string) ConfigOption {
+	return func(c *Config) error {
+		host, portStr, err := net.SplitHostPort(address)
+		if err != nil {
+			return fmt.Errorf("%w %q: %w", ErrInvalidAddress, address, err)
+		}
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			return fmt.Errorf("%w %q: invalid port: %w", ErrInvalidAddress, address, err)
+		}
+		c.Host = host
+		c.Port = port
+		return nil
+	}
 }
 
-func (c *Config) WithWriteTimeout(writeTimeout time.Duration) *Config {
-	c.WriteTimeout = writeTimeout
-	return c
+// WithReadTimeout sets the per-connection read timeout.
+func WithReadTimeout(d time.Duration) ConfigOption {
+	return func(c *Config) error {
+		c.ReadTimeout = d
+		return nil
+	}
 }
 
-func (c *Config) WithIdleTimeout(idleTimeout time.Duration) *Config {
-	c.IdleTimeout = idleTimeout
-	return c
+// WithWriteTimeout sets the per-connection write timeout.
+func WithWriteTimeout(d time.Duration) ConfigOption {
+	return func(c *Config) error {
+		c.WriteTimeout = d
+		return nil
+	}
 }
 
-func (c *Config) WithMaxConnections(maxConnections int) *Config {
-	c.MaxConnections = maxConnections
-	return c
+// WithIdleTimeout sets the per-connection idle timeout.
+func WithIdleTimeout(d time.Duration) ConfigOption {
+	return func(c *Config) error {
+		c.IdleTimeout = d
+		return nil
+	}
 }
 
-func (c *Config) WithReadBufferSize(readBufferSize int) *Config {
-	c.ReadBufferSize = readBufferSize
-	return c
+// WithMaxConnections sets the maximum concurrent connection limit (where 0 = unlimited).
+func WithMaxConnections(n int) ConfigOption {
+	return func(c *Config) error {
+		c.MaxConnections = n
+		return nil
+	}
 }
 
-func (c *Config) WithWriteBufferSize(writeBufferSize int) *Config {
-	c.WriteBufferSize = writeBufferSize
-	return c
+// WithReadBufferSize sets the per-connection read buffer size in bytes.
+func WithReadBufferSize(size int) ConfigOption {
+	return func(c *Config) error {
+		c.ReadBufferSize = size
+		return nil
+	}
+}
+
+// WithWriteBufferSize sets the per-connection write buffer size in bytes.
+func WithWriteBufferSize(size int) ConfigOption {
+	return func(c *Config) error {
+		c.WriteBufferSize = size
+		return nil
+	}
 }
