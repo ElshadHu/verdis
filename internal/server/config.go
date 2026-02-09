@@ -9,7 +9,6 @@ import (
 )
 
 var (
-	ErrEmptyHost               = errors.New("host must not be empty")
 	ErrInvalidPort             = errors.New("port must be between 0 and 65535")
 	ErrInvalidAddress          = errors.New("invalid address")
 	ErrNegativeReadTimeout     = errors.New("read timeout must be non-negative")
@@ -76,9 +75,6 @@ func (c *Config) Address() string {
 
 // Validate checks all config fields for invalid values.
 func (c *Config) Validate() error {
-	if c.Host == "" {
-		return ErrEmptyHost
-	}
 	if c.Port < 0 || c.Port > 65535 {
 		return ErrInvalidPort
 	}
