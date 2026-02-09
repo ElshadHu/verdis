@@ -36,7 +36,7 @@ type Config struct {
 	// IdleTimeout is how long an idle connection is kept alive (where 0 = no timeout).
 	IdleTimeout time.Duration
 
-	// MaxConnections is the max number of concurrent connections (where 0 = unlimited).
+	// MaxConnections is the max number of concurrent connections.
 	MaxConnections int
 
 	// ReadBufferSize is the per-connection read buffer in bytes.
