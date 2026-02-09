@@ -15,7 +15,7 @@ var (
 	ErrNegativeReadTimeout     = errors.New("read timeout must be non-negative")
 	ErrNegativeWriteTimeout    = errors.New("write timeout must be non-negative")
 	ErrNegativeIdleTimeout     = errors.New("idle timeout must be non-negative")
-	ErrNegativeMaxConns        = errors.New("max connections must be non-negative")
+	ErrNonPositiveMaxConns     = errors.New("max connections must be positive")
 	ErrNonPositiveReadBufSize  = errors.New("read buffer size must be positive")
 	ErrNonPositiveWriteBufSize = errors.New("write buffer size must be positive")
 )
@@ -91,8 +91,8 @@ func (c *Config) Validate() error {
 	if c.IdleTimeout < 0 {
 		return ErrNegativeIdleTimeout
 	}
-	if c.MaxConnections < 0 {
-		return ErrNegativeMaxConns
+	if c.MaxConnections <= 0 {
+		return ErrNonPositiveMaxConns
 	}
 	if c.ReadBufferSize <= 0 {
 		return ErrNonPositiveReadBufSize
@@ -160,7 +160,7 @@ func WithIdleTimeout(d time.Duration) ConfigOption {
 	}
 }
 
-// WithMaxConnections sets the maximum concurrent connection limit (where 0 = unlimited).
+// WithMaxConnections sets the maximum concurrent connection limit.
 func WithMaxConnections(n int) ConfigOption {
 	return func(c *Config) error {
 		c.MaxConnections = n
