@@ -12,7 +12,11 @@ import (
 )
 
 func main() {
-	cfg := server.NewDefaultConfig().WithMaxConnections(1000)
+	cfg, err := server.NewDefaultConfig(server.WithAddress("127.0.0.1:6379"),
+		server.WithMaxConnections(1000))
+	if err != nil {
+		log.Fatal("Failed to create config:", err)
+	}
 
 	srv, err := server.NewServer(cfg)
 	if err != nil {
